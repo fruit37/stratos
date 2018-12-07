@@ -141,6 +141,7 @@ import { MetricsRangeSelectorComponent } from './components/metrics-range-select
 import { MetricsParentRangeSelectorComponent } from './components/metrics-parent-range-selector/metrics-parent-range-selector.component';
 import { MetricsRangeSelectorService } from './services/metrics-range-selector.service';
 import { MultilineTitleComponent } from './components/multiline-title/multiline-title.component';
+import { ServicePlanPublicComponent } from './components/service-plan-public/service-plan-public.component';
 
 @NgModule({
   imports: [
@@ -213,6 +214,7 @@ import { MultilineTitleComponent } from './components/multiline-title/multiline-
     CardCfRecentAppsComponent,
     CompactAppCardComponent,
     ServiceIconComponent,
+    ServicePlanPublicComponent,
     EnvVarViewComponent,
     RingChartComponent,
     MetricsChartComponent,
@@ -308,6 +310,7 @@ import { MultilineTitleComponent } from './components/multiline-title/multiline-
     CompactAppCardComponent,
     EnvVarViewComponent,
     ServiceIconComponent,
+    ServicePlanPublicComponent,
     MetricsChartComponent,
     ApplicationInstanceChartComponent,
     StratosTitleComponent,

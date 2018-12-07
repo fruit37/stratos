@@ -1,7 +1,7 @@
 import { ActivatedRoute } from '@angular/router';
 import { Store } from '@ngrx/store';
 import { Observable, of as observableOf, Subscription } from 'rxjs';
-import { filter, first, share, switchMap } from 'rxjs/operators';
+import { filter, first, share, switchMap, map } from 'rxjs/operators';
 
 import {
   IService,
@@ -9,6 +9,7 @@ import {
   IServiceInstance,
   IServicePlan,
   IServicePlanVisibility,
+  IServicePlanExtra,
 } from '../../core/cf-api-svc.types';
 import { PaginationMonitorFactory } from '../../shared/monitors/pagination-monitor.factory';
 import { GetServiceInstances } from '../../store/actions/service-instances.actions';
@@ -19,9 +20,13 @@ import { createEntityRelationPaginationKey } from '../../store/helpers/entity-re
 import { getPaginationObservables } from '../../store/reducers/pagination-reducer/pagination-reducer.helper';
 import { APIResource } from '../../store/types/api.types';
 import { getIdFromRoute } from '../cloud-foundry/cf.helpers';
+import { CardStatus } from '../../shared/components/application-state/application-state.service';
+import { ServicePlanAccessibility } from './services.service';
+import { CreateServiceInstanceHelper } from '../../shared/components/add-service-instance/create-service-instance-helper.service';
 
 
-export const getSvcAvailability = (servicePlan: APIResource<IServicePlan>,
+export const getSvcAvailability = (
+  servicePlan: APIResource<IServicePlan>,
   serviceBroker: APIResource<IServiceBroker>,
   allServicePlanVisibilities: APIResource<IServicePlanVisibility>[]) => {
   const svcAvailability = {
@@ -108,3 +113,79 @@ export const getServicePlans = (
       }
     }));
 };
+
+export function getServicePlanName(plan: { name: string, extraTyped?: IServicePlanExtra }): string {
+  return plan.extraTyped && plan.extraTyped.displayName ? plan.extraTyped.displayName : plan.name;
+}
+
+export const getServicePlanAccessibilityCardStatus = (
+  servicePlan: APIResource<IServicePlan>,
+  servicePlanVisibilities$: Observable<APIResource<IServicePlanVisibility>[]>): Observable<CardStatus> => {
+  return getServicePlanAccessibility(servicePlan, servicePlanVisibilities$).pipe(
+    map((servicePlanAccessibility: ServicePlanAccessibility) => {
+      if (servicePlanAccessibility.isPublic) {
+        return CardStatus.OK;
+      } else if (servicePlanAccessibility.spaceScoped || servicePlanAccessibility.hasVisibilities) {
+        return CardStatus.WARNING;
+      } else {
+        return CardStatus.ERROR;
+      }
+    }),
+    first()
+  );
+};
+
+export const getServicePlanAccessibility = (
+  servicePlan: APIResource<IServicePlan>,
+  servicePlanVisibilities$: Observable<APIResource<IServicePlanVisibility>[]>): Observable<ServicePlanAccessibility> => {
+  if (servicePlan.entity.public) {
+    return observableOf({
+      isPublic: true,
+      guid: servicePlan.metadata.guid
+    });
+  }
+  return servicePlanVisibilities$.pipe(
+    filter(p => !!p),
+    map((allServicePlanVisibilities) => getSvcAvailability(servicePlan, null, allServicePlanVisibilities))
+  );
+};
+
+
+
+// export function getServicePlanVisibilitiesForPlan(servicePlanGuid: string): Observable<APIResource<IServicePlanVisibility>[]> {
+//   return getServicePlanVisibilities().pipe(
+//     filter(p => !!p),
+//     map(vis => vis.filter(s => s.entity.service_plan_guid === servicePlanGuid)),
+//     first()
+//   );
+// }
+
+// export function getServicePlanAccessibility(servicePlanGuid: string, servicePlan: IServicePlan): Observable<ServicePlanAccessibility> {
+//   if (servicePlan.public) {
+//     return observableOf({
+//       isPublic: true,
+//       guid: servicePlanGuid
+//     });
+//   }
+//   return getServicePlanVisibilities().pipe(
+//     filter(p => !!p),
+//     map((allServicePlanVisibilities) => getSvcAvailability(servicePlanGuid, null, allServicePlanVisibilities))
+//   );
+// }
+
+// export function getServicePlanAccessibilityCard(
+//   servicePlanGuid: string,
+//   servicePlan: IServicePlan): Observable<CardStatus> {
+//   return getServicePlanAccessibility(servicePlanGuid, servicePlan).pipe(
+//     map((servicePlanAccessibility: ServicePlanAccessibility) => {
+//       if (servicePlanAccessibility.isPublic) {
+//         return CardStatus.OK;
+//       } else if (servicePlanAccessibility.spaceScoped || servicePlanAccessibility.hasVisibilities) {
+//         return CardStatus.WARNING;
+//       } else {
+//         return CardStatus.ERROR;
+//       }
+//     }),
+//     first()
+//   );
+// }

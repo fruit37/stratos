@@ -1,0 +1,2 @@
+{{ isPublic(selPlan) | titlecase}}
+<span *ngIf="(getPlanAccessibility(selPlan.entity) | async) !== 'ok'"> ({{ getAccessibilityMessage(selPlan.entity) | async }})</span>

@@ -32,6 +32,8 @@ import {
 } from 'rxjs/operators';
 
 import { IServicePlan, IServicePlanCost, IServicePlanExtra } from '../../../../core/cf-api-svc.types';
+import { safeUnsubscribe } from '../../../../core/utils.service';
+import { getServicePlanName, getServicePlanAccessibilityCardStatus } from '../../../../features/service-catalog/services-helper';
 import { ServicePlanAccessibility } from '../../../../features/service-catalog/services.service';
 import {
   SetCreateServiceInstanceCFDetails,
@@ -46,15 +48,8 @@ import { CreateServiceInstanceHelperServiceFactory } from '../create-service-ins
 import { CreateServiceInstanceHelper } from '../create-service-instance-helper.service';
 import { CsiModeService } from '../csi-mode.service';
 import { NoServicePlansComponent } from '../no-service-plans/no-service-plans.component';
-import { safeUnsubscribe } from '../../../../core/utils.service';
 
 
-interface ServicePlan {
-  id: string;
-  name: string;
-  entity: APIResource<IServicePlan>;
-  extra: IServicePlanExtra;
-}
 @Component({
   selector: 'app-select-plan-step',
   templateUrl: './select-plan-step.component.html',
@@ -65,22 +60,23 @@ interface ServicePlan {
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SelectPlanStepComponent implements OnDestroy {
-  selectedPlan$: Observable<ServicePlan>;
+  selectedPlan$: Observable<APIResource<IServicePlan>>;
+  selectedPlanAccessibility$ = new BehaviorSubject<CardStatus>(null);
   cSIHelperService: CreateServiceInstanceHelper;
   @ViewChild('noplans', { read: ViewContainerRef })
   noPlansDiv: ViewContainerRef;
 
-  servicePlans: ServicePlan[];
+  // servicePlans: APIResource<IServicePlan>[];
 
   validate = new BehaviorSubject<boolean>(false);
   subscription: Subscription;
   stepperForm: FormGroup;
-  servicePlans$: Observable<ServicePlan[]>;
+  servicePlans$: Observable<APIResource<IServicePlan>[]>;
 
   constructor(
     private store: Store<AppState>,
     private cSIHelperServiceFactory: CreateServiceInstanceHelperServiceFactory,
-    private activatedRoute: ActivatedRoute,
+    activatedRoute: ActivatedRoute,
     private componentFactoryResolver: ComponentFactoryResolver,
     private modeService: CsiModeService
 
@@ -125,25 +121,28 @@ export class SelectPlanStepComponent implements OnDestroy {
       this.stepperForm.statusChanges.pipe(startWith(true)),
       this.servicePlans$).pipe(
         filter(([p, q]) => !!q && q.length > 0),
-        map(([valid, servicePlans]) =>
-          servicePlans.filter(s => s.entity.metadata.guid === this.stepperForm.controls.servicePlans.value)[0])
+        map(([valid, servicePlans]) => servicePlans.filter(s => s.metadata.guid === this.stepperForm.controls.servicePlans.value)[0]),
+        tap(selectedServicePlan => {
+          getServicePlanAccessibilityCardStatus(selectedServicePlan, this.cSIHelperService.getServicePlanVisibilities()).pipe(
+            first()
+          ).subscribe(cardStatus => this.selectedPlanAccessibility$.next(cardStatus));
+        })
       );
+
   }
 
-  mapToServicePlan = (visiblePlans: APIResource<IServicePlan>[]): ServicePlan[] => visiblePlans.map(p => ({
-    id: p.metadata.guid,
-    name: p.entity.name,
-    entity: p,
-    extra: p.entity.extra ? JSON.parse(p.entity.extra) : null
+  mapToServicePlan = (visiblePlans: APIResource<IServicePlan>[]): APIResource<IServicePlan>[] => visiblePlans.map(p => ({
+    ...p,
+    entity: {
+      ...p.entity,
+      extraTyped: p.entity.extra ? JSON.parse(p.entity.extra) : null
+    }
   }))
 
   getDisplayName(selectedPlan: ServicePlan) {
-    let name = selectedPlan.name;
-    if (selectedPlan.extra && selectedPlan.extra.displayName) {
-      name = selectedPlan.extra.displayName;
-    }
-    return name;
+    return getServicePlanName(selectedPlan);
   }
+
   hasAdditionalInfo(selectedPlan: ServicePlan) {
     return selectedPlan.extra && selectedPlan.extra.bullets;
   }
@@ -174,36 +173,36 @@ export class SelectPlanStepComponent implements OnDestroy {
     safeUnsubscribe(this.subscription);
   }
 
-  getPlanAccessibility = (servicePlan: APIResource<IServicePlan>): Observable<CardStatus> => {
-    return this.cSIHelperService.getServicePlanAccessibility(servicePlan).pipe(
-      map((servicePlanAccessibility: ServicePlanAccessibility) => {
-        if (servicePlanAccessibility.isPublic) {
-          return CardStatus.OK;
-        } else if (servicePlanAccessibility.spaceScoped || servicePlanAccessibility.hasVisibilities) {
-          return CardStatus.WARNING;
-        } else {
-          return CardStatus.ERROR;
-        }
-      }),
-      first()
-    );
-  }
+  // getPlanAccessibility = (servicePlan: APIResource<IServicePlan>): Observable<CardStatus> => {
+  //   return this.cSIHelperService.getServicePlanAccessibility(servicePlan).pipe(
+  //     map((servicePlanAccessibility: ServicePlanAccessibility) => {
+  //       if (servicePlanAccessibility.isPublic) {
+  //         return CardStatus.OK;
+  //       } else if (servicePlanAccessibility.spaceScoped || servicePlanAccessibility.hasVisibilities) {
+  //         return CardStatus.WARNING;
+  //       } else {
+  //         return CardStatus.ERROR;
+  //       }
+  //     }),
+  //     first()
+  //   );
+  // }
 
-  getAccessibilityMessage = (servicePlan: APIResource<IServicePlan>): Observable<string> => {
+  // getAccessibilityMessage = (servicePlan: APIResource<IServicePlan>): Observable<string> => {
 
-    return this.getPlanAccessibility(servicePlan).pipe(
-      map(o => {
-        if (o === CardStatus.WARNING) {
-          return 'Service Plan has limited visibility';
-        } else if (o === CardStatus.ERROR) {
-          return 'Service Plan has no visibility';
-        }
-      })
-    );
-  }
+  //   return this.getPlanAccessibility(servicePlan).pipe(
+  //     map(o => {
+  //       if (o === CardStatus.WARNING) {
+  //         return 'Service Plan has limited visibility';
+  //       } else if (o === CardStatus.ERROR) {
+  //         return 'Service Plan has no visibility';
+  //       }
+  //     })
+  //   );
+  // }
 
   isYesOrNo = val => val ? 'yes' : 'no';
-  isPublic = (selPlan: EntityInfo<APIResource<IServicePlan>>) => this.isYesOrNo(selPlan.entity.entity.public);
+  // isPublic = (selPlan: EntityInfo<APIResource<IServicePlan>>) => this.isYesOrNo(selPlan.entity.entity.public);
   isFree = (selPlan: EntityInfo<APIResource<IServicePlan>>) => this.isYesOrNo(selPlan.entity.entity.free);
 
   /*
